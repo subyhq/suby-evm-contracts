@@ -1,0 +1,13 @@
+{
+  "extends": "solhint:recommended",
+  "rules": {
+    "compiler-version": ["error", "^0.8.0"],
+    "func-visibility": ["warn", { "ignoreConstructors": true }],
+    "compiler-fixed": false,
+    "quotes": ["error", "single"],
+    "indent": [2],
+    "custom-errors": ["off"],
+    "no-console": "off"
+  },
+  "ignores": ["lib/**/*.sol"]
+}
