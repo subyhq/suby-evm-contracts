@@ -15,8 +15,7 @@ import { ISubyPayment } from './interfaces/ISubyPayment.sol';
 contract SubyRelayer is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    address public immutable USDC;
-    ISubyPayment public immutable subyPayment;
+    ISubyPayment public subyPayment;
 
     address public operator;
 
@@ -37,19 +36,49 @@ contract SubyRelayer is Ownable, ReentrancyGuard {
         _;
     }
 
-    constructor(address owner_, address operator_, address subyPayment_, address usdc_) Ownable(owner_) {
-        if (operator_ == address(0) || subyPayment_ == address(0) || usdc_ == address(0)) revert InvalidAddress();
+    constructor(address owner_, address operator_, address subyPayment_) Ownable(owner_) {
+        if (operator_ == address(0) || subyPayment_ == address(0)) revert InvalidAddress();
         subyPayment = ISubyPayment(subyPayment_);
-        USDC = usdc_;
         operator = operator_;
         emit OperatorChanged(address(0), operator_);
     }
 
-    /// @notice Forward USDC sitting on this contract into `SubyPayment.payment` with the
-    ///         provided split. Caller (operator) is responsible for ensuring the relayer
-    ///         holds enough USDC to cover `sum(splitData.amount)`.
+    /// @notice Forward an arbitrary ERC-20 sitting on this contract into `SubyPayment.payment`
+    ///         with the provided split. Caller (operator) is responsible for ensuring the relayer
+    ///         holds enough `token` to cover `total` and that `total == sum(splitData.amount)`.
+    /// @param token  ERC-20 to distribute (e.g. USDC).
+    /// @param total  Sum of `splitData.amount`. Passed in to avoid recomputing it on-chain; it is
+    ///               only used as the approval amount, so an undersized value makes the inner
+    ///               `payment` revert on insufficient allowance.
     function executePayment(
         string calldata paymentId,
+        address token,
+        uint256 total,
+        ISubyPayment.RecipientAndAmount[] calldata splitData
+    )
+        external
+        nonReentrant
+        onlyOperator
+    {
+        if (splitData.length == 0) revert EmptySplitData();
+        if (token == address(0)) revert InvalidAddress();
+        if (settled[paymentId]) revert AlreadySettled(paymentId);
+        settled[paymentId] = true;
+
+        // Approve only the exact amount needed for this call. forceApprove handles
+        // any non-zero stale allowance defensively.
+        IERC20(token).forceApprove(address(subyPayment), total);
+        subyPayment.payment(paymentId, token, splitData);
+
+        emit Executed(paymentId, total, splitData.length);
+    }
+
+    /// @notice Forward native ETH sitting on this contract into `SubyPayment.paymentNative`
+    ///         with the provided split. `total` must equal `sum(splitData.amount)`, otherwise the
+    ///         inner `paymentNative` reverts on the `msg.value` check.
+    function executePaymentNative(
+        string calldata paymentId,
+        uint256 total,
         ISubyPayment.RecipientAndAmount[] calldata splitData
     )
         external
@@ -60,15 +89,7 @@ contract SubyRelayer is Ownable, ReentrancyGuard {
         if (settled[paymentId]) revert AlreadySettled(paymentId);
         settled[paymentId] = true;
 
-        uint256 total;
-        for (uint256 i = 0; i < splitData.length; i++) {
-            total += splitData[i].amount;
-        }
-
-        // Approve only the exact amount needed for this call. forceApprove handles
-        // any non-zero stale allowance defensively.
-        IERC20(USDC).forceApprove(address(subyPayment), total);
-        subyPayment.payment(paymentId, USDC, splitData);
+        subyPayment.paymentNative{ value: total }(paymentId, splitData);
 
         emit Executed(paymentId, total, splitData.length);
     }
@@ -82,11 +103,22 @@ contract SubyRelayer is Ownable, ReentrancyGuard {
         emit OperatorChanged(old, newOperator);
     }
 
-    /// @notice Escape hatch for funds stuck in the relayer (non-USDC bridged by mistake,
-    ///         dust left over after partial fills, etc.). Owner-only.
-    function rescue(address token, address to, uint256 amount) external nonReentrant onlyOwner {
-        if (to == address(0)) revert InvalidAddress();
-        IERC20(token).safeTransfer(to, amount);
-        emit Rescued(token, to, amount);
+    function setSubyPayment(address newSubyPayment) external onlyOwner {
+        if (newSubyPayment == address(0)) revert InvalidAddress();
+        subyPayment = ISubyPayment(newSubyPayment);
     }
+
+    function withdrawETH() external onlyOwner {
+        (bool sent,) = msg.sender.call{ value: address(this).balance }('');
+        require(sent, 'Failed to send Ether');
+    }
+
+    function withdrawToken(address tokenAddress) external onlyOwner {
+        IERC20 token = IERC20(tokenAddress);
+        token.safeTransfer(msg.sender, token.balanceOf(address(this)));
+    }
+
+    /// @notice Accept native ETH (e.g. bridged funds) so it can later be forwarded via
+    ///         `executePaymentNative`.
+    receive() external payable { }
 }
