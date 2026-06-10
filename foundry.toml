@@ -34,3 +34,8 @@ quote_style = "single"
 
 [rpc_endpoints]
 base = "${RPC_BASE}"
+polygon = "${RPC_POLYGON}"
+
+[etherscan]
+base = { key = "${ETHERSCAN_API_KEY}", chain = 8453 }
+polygon = { key = "${ETHERSCAN_API_KEY}", chain = 137 }

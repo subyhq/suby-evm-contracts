@@ -20,16 +20,14 @@ contract DeploySubyRelayer is Script {
         address owner        = vm.envAddress('RELAYER_OWNER');
         address operator     = vm.envAddress('RELAYER_OPERATOR');
         address subyPayment  = vm.envAddress('SUBY_PAYMENT');
-        address usdc         = vm.envAddress('USDC');
 
         vm.startBroadcast(deployerPrivateKey);
-        SubyRelayer relayer = new SubyRelayer(owner, operator, subyPayment, usdc);
+        SubyRelayer relayer = new SubyRelayer(owner, operator, subyPayment);
         vm.stopBroadcast();
 
         console.log('SubyRelayer  : %s', address(relayer));
         console.log('  owner      : %s', owner);
         console.log('  operator   : %s', operator);
         console.log('  subyPayment: %s', subyPayment);
-        console.log('  USDC       : %s', usdc);
     }
 }
