@@ -102,8 +102,11 @@ contract SubyMerchantVault is ReentrancyGuard {
     }
 
     /// @notice Operator pulls `amount` of `token` to the factory `feeWallet` (debt recovery).
-    ///         Held is reduced by `min(amount, held)` — the freeze that mirrored the debt
-    ///         no longer needs to gate withdrawal once the funds have actually moved out.
+    ///         `amount` MUST be ≤ `holdOf[token]` — the operator can only retrieve what was
+    ///         previously frozen via `hold()`. This is the non-custodial invariant: Suby
+    ///         cannot drain merchant balance beyond the explicitly-recorded debt freeze,
+    ///         even if the operator key is compromised. Legitimate debt-recovery flow
+    ///         always posts `hold(debtAmount, "debt:...")` BEFORE `clawback(debtAmount, ...)`.
     function clawback(
         address token,
         uint256 amount,
@@ -119,12 +122,10 @@ contract SubyMerchantVault is ReentrancyGuard {
         if (dst == address(0)) revert ZeroAddress();
 
         uint256 held = holdOf[token];
-        uint256 newTotal = held;
-        if (held > 0) {
-            uint256 burn = amount > held ? held : amount;
-            newTotal = held - burn;
-            holdOf[token] = newTotal;
-        }
+        if (amount > held) revert ExceedsHeld(amount, held);
+
+        uint256 newTotal = held - amount;
+        holdOf[token] = newTotal;
         IERC20(token).safeTransfer(dst, amount);
         emit Clawback(token, dst, amount, newTotal, reason);
     }

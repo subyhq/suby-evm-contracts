@@ -127,26 +127,32 @@ contract SubyMerchantVaultTest is Test {
         assertEq(vault.holdOf(address(usdc)), 50e6);
     }
 
-    function test_clawback_burnsHeldUpToAmount_whenAmountExceedsHeld() public {
+    function test_clawback_revertsWhenAmountExceedsHeld() public {
         usdc.mint(address(vault), 300e6);
         vm.startPrank(operator);
         vault.hold(address(usdc), 80e6, REASON_DEBT);
+
+        vm.expectRevert(abi.encodeWithSelector(SubyMerchantVault.ExceedsHeld.selector, 150e6, 80e6));
         vault.clawback(address(usdc), 150e6, REASON_DEBT);
+
+        // exact-bound clawback succeeds and zeroes the hold
+        vault.clawback(address(usdc), 80e6, REASON_DEBT);
         vm.stopPrank();
 
-        assertEq(usdc.balanceOf(feeWallet), 150e6);
-        assertEq(vault.holdOf(address(usdc)), 0, 'held should be burned to 0, not under-flowed');
-        assertEq(vault.balanceOf(address(usdc)), 150e6);
+        assertEq(usdc.balanceOf(feeWallet), 80e6);
+        assertEq(vault.holdOf(address(usdc)), 0);
+        assertEq(vault.balanceOf(address(usdc)), 220e6);
     }
 
-    function test_clawback_worksWithoutPriorHold() public {
+    function test_clawback_revertsWithoutPriorHold() public {
         usdc.mint(address(vault), 100e6);
 
         vm.prank(operator);
+        vm.expectRevert(abi.encodeWithSelector(SubyMerchantVault.ExceedsHeld.selector, 40e6, 0));
         vault.clawback(address(usdc), 40e6, REASON_DEBT);
 
-        assertEq(usdc.balanceOf(feeWallet), 40e6);
-        assertEq(vault.balanceOf(address(usdc)), 60e6);
+        assertEq(usdc.balanceOf(feeWallet), 0);
+        assertEq(vault.balanceOf(address(usdc)), 100e6);
         assertEq(vault.holdOf(address(usdc)), 0);
     }
 
@@ -157,8 +163,10 @@ contract SubyMerchantVaultTest is Test {
         vm.prank(owner);
         factory.setFeeWallet(newFw);
 
-        vm.prank(operator);
+        vm.startPrank(operator);
+        vault.hold(address(usdc), 30e6, REASON_DEBT);
         vault.clawback(address(usdc), 30e6, REASON_DEBT);
+        vm.stopPrank();
 
         assertEq(usdc.balanceOf(newFw), 30e6);
         assertEq(usdc.balanceOf(feeWallet), 0);
