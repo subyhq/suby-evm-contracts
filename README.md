@@ -51,8 +51,6 @@ Docs: <https://documentation.suby.fi> · [Stablecoin payments](https://documenta
 | ----- | ----------------------------------------------------------------------------------------------------------------------- | ---------- |
 | Base  | [`0x99c9c5C918fc397Ff20Da5b1686E24ee8249A99E`](https://basescan.org/address/0x99c9c5c918fc397ff20da5b1686e24ee8249a99e) | USDC, EURC |
 
-The earlier build at [`0xcb6c14…139f`](https://basescan.org/address/0xcb6c14af9afec09a3c58c32aeda914f232d1139f) is superseded and holds no funds.
-
 ## Usage
 
 ```sh
